@@ -395,7 +395,7 @@ func TestCompact1(t *testing.T) {
 	replicas, closeReplicas := makeNReplicas(t, 2, o)
 	defer closeReplicas()
 
-	k1 := ds.NewKey(fmt.Sprintf("k%d", 1))
+	k1 := ds.NewKey("k1")
 	replicas[0].Put(ctx, k1, []byte("v1"))
 
 	require.Eventually(t, func() bool {
