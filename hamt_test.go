@@ -389,7 +389,7 @@ func TestCompact1(t *testing.T) {
 	ctx := context.Background()
 	o := DefaultOptions()
 	o.CompactDagSize = 7
-	o.CompactRetainNodes = 5
+	o.CompactRetainNodes = 2
 	o.CompactInterval = 5 * time.Second
 
 	replicas, closeReplicas := makeNReplicas(t, 2, o)
@@ -402,4 +402,73 @@ func TestCompact1(t *testing.T) {
 		v, err := replicas[1].Get(ctx, k1)
 		return err == nil && bytes.Equal(v, []byte("v1"))
 	}, 15*time.Second, 500*time.Millisecond)
+
+	for i := 0; i < 2; i++ {
+		require.Equal(t, uint64(1), replicas[i].InternalStats(ctx).MaxHeight)
+		require.Equal(t, 1, len(replicas[i].InternalStats(ctx).Heads))
+	}
+
+	br0 := replicas[0].broadcaster.(*mockBroadcaster)
+	br0.dropProb.Store(101)
+
+	br1 := replicas[1].broadcaster.(*mockBroadcaster)
+	br1.dropProb.Store(101)
+
+	replicas[0].Put(ctx, ds.NewKey("k2"), []byte("v2"))
+	replicas[0].Put(ctx, ds.NewKey("k3"), []byte("v3-GreaterPriority"))
+
+	replicas[1].Put(ctx, ds.NewKey("k3"), []byte("v3-LowerPriority"))
+	replicas[1].Put(ctx, ds.NewKey("k4"), []byte("v4"))
+
+	v, err := replicas[0].Get(ctx, ds.NewKey("k3"))
+	require.NoError(t, err)
+	require.Equal(t, []byte("v3-GreaterPriority"), v)
+
+	v, err = replicas[1].Get(ctx, ds.NewKey("k3"))
+	require.NoError(t, err)
+	require.Equal(t, []byte("v3-LowerPriority"), v)
+
+	br0.dropProb.Store(0)
+	br1.dropProb.Store(101)
+
+	require.Eventually(t, func() bool {
+		v, err := replicas[1].Get(ctx, ds.NewKey("k3"))
+		return err == nil && bytes.Equal(v, []byte("v3-GreaterPriority"))
+	}, 15*time.Second, 500*time.Millisecond)
+
+	br1.dropProb.Store(101)
+
+	replicas[0].Delete(ctx, ds.NewKey("k3"))
+
+	v, err = replicas[0].Get(ctx, ds.NewKey("k3"))
+	require.Error(t, ds.ErrNotFound)
+
+	v, err = replicas[1].Get(ctx, ds.NewKey("k3"))
+	require.NoError(t, err)
+	require.Equal(t, []byte("v3-GreaterPriority"), v)
+
+	replicas[0].Put(ctx, ds.NewKey("somekey-1"), []byte("somevalue-1"))
+	replicas[0].Put(ctx, ds.NewKey("somekey-2"), []byte("somevalue-2"))
+
+	replicas[1].Put(ctx, ds.NewKey("somekey-3"), []byte("somevalue-3"))
+	replicas[1].Put(ctx, ds.NewKey("somekey-4"), []byte("somevalue-4"))
+
+	br0.dropProb.Store(0)
+	br1.dropProb.Store(0)
+
+	require.Eventually(t, func() bool {
+		v, err := replicas[1].Get(ctx, ds.NewKey("k3"))
+		return err == nil && bytes.Equal(v, []byte("v3-LowerPriority"))
+	}, 15*time.Second, 500*time.Millisecond)
+
+	replicas[0].Put(ctx, ds.NewKey("final-key"), []byte("final-value"))
+
+	require.Eventually(t, func() bool {
+		v, err := replicas[1].Get(ctx, ds.NewKey("final-key"))
+		return err == nil && bytes.Equal(v, []byte("final-value"))
+	}, 15*time.Second, 500*time.Millisecond)
+
+	/*require.Eventually(t, func() bool {
+		return replicas[0].InternalStats(ctx).State.Snapshot != nil
+	}, 15*time.Second, 500*time.Millisecond, "Replica 0 should receive the snapshot")*/
 }
