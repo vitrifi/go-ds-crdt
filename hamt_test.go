@@ -1,6 +1,7 @@
 package crdt
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"sync"
@@ -12,7 +13,7 @@ import (
 	"github.com/ipfs/boxo/ipld/unixfs/hamt"
 	"github.com/ipfs/go-cid"
 	ds "github.com/ipfs/go-datastore"
-	"github.com/ipfs/go-ipld-format"
+	format "github.com/ipfs/go-ipld-format"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/errgroup"
 )
@@ -381,5 +382,24 @@ func TestTriggerSnapshot(t *testing.T) {
 
 	require.Eventually(t, func() bool {
 		return replicas[0].InternalStats(ctx).State.Snapshot != nil
+	}, 15*time.Second, 500*time.Millisecond)
+}
+
+func TestCompact1(t *testing.T) {
+	ctx := context.Background()
+	o := DefaultOptions()
+	o.CompactDagSize = 7
+	o.CompactRetainNodes = 5
+	o.CompactInterval = 5 * time.Second
+
+	replicas, closeReplicas := makeNReplicas(t, 2, o)
+	defer closeReplicas()
+
+	k1 := ds.NewKey(fmt.Sprintf("k%d", 1))
+	replicas[0].Put(ctx, k1, []byte("v1"))
+
+	require.Eventually(t, func() bool {
+		v, err := replicas[1].Get(ctx, k1)
+		return err == nil && bytes.Equal(v, []byte("v1"))
 	}, 15*time.Second, 500*time.Millisecond)
 }
