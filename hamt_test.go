@@ -409,9 +409,9 @@ func TestCompact1(t *testing.T) {
 	}
 
 	br0 := replicas[0].broadcaster.(*mockBroadcaster)
-	br0.dropProb.Store(101)
-
 	br1 := replicas[1].broadcaster.(*mockBroadcaster)
+
+	br0.dropProb.Store(101)
 	br1.dropProb.Store(101)
 
 	replicas[0].Put(ctx, ds.NewKey("k2"), []byte("v2"))
@@ -436,7 +436,7 @@ func TestCompact1(t *testing.T) {
 		return err == nil && bytes.Equal(v, []byte("v3-GreaterPriority"))
 	}, 15*time.Second, 500*time.Millisecond)
 
-	br1.dropProb.Store(101)
+	br0.dropProb.Store(101)
 
 	replicas[0].Delete(ctx, ds.NewKey("k3"))
 
@@ -448,8 +448,8 @@ func TestCompact1(t *testing.T) {
 	require.Equal(t, []byte("v3-GreaterPriority"), v)
 
 	replicas[0].Put(ctx, ds.NewKey("somekey-1"), []byte("somevalue-1"))
-	replicas[0].Put(ctx, ds.NewKey("somekey-2"), []byte("somevalue-2"))
 
+	replicas[1].Put(ctx, ds.NewKey("somekey-2"), []byte("somevalue-2"))
 	replicas[1].Put(ctx, ds.NewKey("somekey-3"), []byte("somevalue-3"))
 	replicas[1].Put(ctx, ds.NewKey("somekey-4"), []byte("somevalue-4"))
 
@@ -461,6 +461,16 @@ func TestCompact1(t *testing.T) {
 		return err == nil && bytes.Equal(v, []byte("v3-LowerPriority"))
 	}, 15*time.Second, 500*time.Millisecond)
 
+	require.Eventually(t, func() bool {
+		v, err := replicas[0].Get(ctx, ds.NewKey("somekey-4"))
+		return err == nil && bytes.Equal(v, []byte("somevalue-4"))
+	}, 15*time.Second, 500*time.Millisecond)
+
+	require.Eventually(t, func() bool {
+		v, err := replicas[1].Get(ctx, ds.NewKey("somekey-1"))
+		return err == nil && bytes.Equal(v, []byte("somevalue-1"))
+	}, 15*time.Second, 500*time.Millisecond)
+
 	replicas[0].Put(ctx, ds.NewKey("final-key"), []byte("final-value"))
 
 	require.Eventually(t, func() bool {
@@ -468,7 +478,20 @@ func TestCompact1(t *testing.T) {
 		return err == nil && bytes.Equal(v, []byte("final-value"))
 	}, 15*time.Second, 500*time.Millisecond)
 
-	/*require.Eventually(t, func() bool {
+	require.Equal(t, uint64(7), replicas[0].InternalStats(ctx).MaxHeight)
+	require.Equal(t, uint64(7), replicas[1].InternalStats(ctx).MaxHeight)
+
+	require.Eventually(t, func() bool {
 		return replicas[0].InternalStats(ctx).State.Snapshot != nil
-	}, 15*time.Second, 500*time.Millisecond, "Replica 0 should receive the snapshot")*/
+	}, 15*time.Second, 500*time.Millisecond, "Replica 0 should receive the snapshot")
+
+	snapshotCidBytes := replicas[0].InternalStats(ctx).State.Snapshot.SnapshotKey.Cid
+
+	snapshotCID, err := cid.Cast(snapshotCidBytes)
+
+	snapshot, err := ExtractSnapshot(t, ctx, replicas[0].dagService, snapshotCID)
+
+	fmt.Println(snapshot)
+
+	require.False(t, true)
 }
