@@ -45,6 +45,14 @@ func setupTestEnv(t *testing.T) (*Datastore, Peer, format.DAGService, func()) {
 	return store, h, dagService, cleanup
 }
 
+func requireReplicaHasKey(t *testing.T, ctx context.Context, replica *Datastore, key ds.Key, value []byte) {
+	t.Helper()
+	require.Eventually(t, func() bool {
+		v, err := replica.Get(ctx, key)
+		return err == nil && bytes.Equal(v, value)
+	}, 15*time.Second, 500*time.Millisecond)
+}
+
 func TestCompactAndTruncateDeltaDAG(t *testing.T) {
 	ctx := context.Background()
 	store, h, dagService, cleanup := setupTestEnv(t)
@@ -396,12 +404,9 @@ func TestCompact1(t *testing.T) {
 	defer closeReplicas()
 
 	k1 := ds.NewKey("k1")
-	replicas[0].Put(ctx, k1, []byte("v1"))
+	require.NoError(t, replicas[0].Put(ctx, k1, []byte("v1")))
 
-	require.Eventually(t, func() bool {
-		v, err := replicas[1].Get(ctx, k1)
-		return err == nil && bytes.Equal(v, []byte("v1"))
-	}, 15*time.Second, 500*time.Millisecond)
+	requireReplicaHasKey(t, ctx, replicas[1], k1, []byte("v1"))
 
 	for i := 0; i < 2; i++ {
 		require.Equal(t, uint64(1), replicas[i].InternalStats(ctx).MaxHeight)
@@ -414,11 +419,11 @@ func TestCompact1(t *testing.T) {
 	br0.dropProb.Store(101)
 	br1.dropProb.Store(101)
 
-	replicas[0].Put(ctx, ds.NewKey("k2"), []byte("v2"))
-	replicas[0].Put(ctx, ds.NewKey("k3"), []byte("v3-GreaterPriority"))
+	require.NoError(t, replicas[0].Put(ctx, ds.NewKey("k2"), []byte("v2")))
+	require.NoError(t, replicas[0].Put(ctx, ds.NewKey("k3"), []byte("v3-GreaterPriority")))
 
-	replicas[1].Put(ctx, ds.NewKey("k3"), []byte("v3-LowerPriority"))
-	replicas[1].Put(ctx, ds.NewKey("k4"), []byte("v4"))
+	require.NoError(t, replicas[1].Put(ctx, ds.NewKey("k3"), []byte("v3-LowerPriority")))
+	require.NoError(t, replicas[1].Put(ctx, ds.NewKey("k4"), []byte("v4")))
 
 	v, err := replicas[0].Get(ctx, ds.NewKey("k3"))
 	require.NoError(t, err)
@@ -431,52 +436,34 @@ func TestCompact1(t *testing.T) {
 	br0.dropProb.Store(0)
 	br1.dropProb.Store(101)
 
-	require.Eventually(t, func() bool {
-		v, err := replicas[1].Get(ctx, ds.NewKey("k3"))
-		return err == nil && bytes.Equal(v, []byte("v3-GreaterPriority"))
-	}, 15*time.Second, 500*time.Millisecond)
+	requireReplicaHasKey(t, ctx, replicas[1], ds.NewKey("k3"), []byte("v3-GreaterPriority"))
 
 	br0.dropProb.Store(101)
 
 	replicas[0].Delete(ctx, ds.NewKey("k3"))
 
-	v, err = replicas[0].Get(ctx, ds.NewKey("k3"))
-	require.Error(t, ds.ErrNotFound)
+	_, err = replicas[0].Get(ctx, ds.NewKey("k3"))
+	require.Error(t, err, ds.ErrNotFound)
 
 	v, err = replicas[1].Get(ctx, ds.NewKey("k3"))
 	require.NoError(t, err)
 	require.Equal(t, []byte("v3-GreaterPriority"), v)
 
-	replicas[0].Put(ctx, ds.NewKey("somekey-1"), []byte("somevalue-1"))
+	require.NoError(t, replicas[0].Put(ctx, ds.NewKey("somekey-1"), []byte("somevalue-1")))
 
-	replicas[1].Put(ctx, ds.NewKey("somekey-2"), []byte("somevalue-2"))
-	replicas[1].Put(ctx, ds.NewKey("somekey-3"), []byte("somevalue-3"))
-	replicas[1].Put(ctx, ds.NewKey("somekey-4"), []byte("somevalue-4"))
+	require.NoError(t, replicas[1].Put(ctx, ds.NewKey("somekey-2"), []byte("somevalue-2")))
+	require.NoError(t, replicas[1].Put(ctx, ds.NewKey("somekey-3"), []byte("somevalue-3")))
+	require.NoError(t, replicas[1].Put(ctx, ds.NewKey("somekey-4"), []byte("somevalue-4")))
 
 	br0.dropProb.Store(0)
 	br1.dropProb.Store(0)
 
-	require.Eventually(t, func() bool {
-		v, err := replicas[1].Get(ctx, ds.NewKey("k3"))
-		return err == nil && bytes.Equal(v, []byte("v3-LowerPriority"))
-	}, 15*time.Second, 500*time.Millisecond)
+	requireReplicaHasKey(t, ctx, replicas[1], ds.NewKey("k3"), []byte("v3-LowerPriority"))
+	requireReplicaHasKey(t, ctx, replicas[0], ds.NewKey("somekey-4"), []byte("somevalue-4"))
+	requireReplicaHasKey(t, ctx, replicas[1], ds.NewKey("somekey-1"), []byte("somevalue-1"))
 
-	require.Eventually(t, func() bool {
-		v, err := replicas[0].Get(ctx, ds.NewKey("somekey-4"))
-		return err == nil && bytes.Equal(v, []byte("somevalue-4"))
-	}, 15*time.Second, 500*time.Millisecond)
-
-	require.Eventually(t, func() bool {
-		v, err := replicas[1].Get(ctx, ds.NewKey("somekey-1"))
-		return err == nil && bytes.Equal(v, []byte("somevalue-1"))
-	}, 15*time.Second, 500*time.Millisecond)
-
-	replicas[0].Put(ctx, ds.NewKey("final-key"), []byte("final-value"))
-
-	require.Eventually(t, func() bool {
-		v, err := replicas[1].Get(ctx, ds.NewKey("final-key"))
-		return err == nil && bytes.Equal(v, []byte("final-value"))
-	}, 15*time.Second, 500*time.Millisecond)
+	require.NoError(t, replicas[0].Put(ctx, ds.NewKey("final-key"), []byte("final-value")))
+	requireReplicaHasKey(t, ctx, replicas[1], ds.NewKey("final-key"), []byte("final-value"))
 
 	require.Equal(t, uint64(7), replicas[0].InternalStats(ctx).MaxHeight)
 	require.Equal(t, uint64(7), replicas[1].InternalStats(ctx).MaxHeight)
@@ -488,8 +475,10 @@ func TestCompact1(t *testing.T) {
 	snapshotCidBytes := replicas[0].InternalStats(ctx).State.Snapshot.SnapshotKey.Cid
 
 	snapshotCID, err := cid.Cast(snapshotCidBytes)
+	require.NoError(t, err)
 
 	snapshot, err := ExtractSnapshot(t, ctx, replicas[0].dagService, snapshotCID)
+	require.NoError(t, err)
 
 	fmt.Println(snapshot)
 
