@@ -166,6 +166,78 @@ func TestHAMTDatastore(t *testing.T) {
 		assert.Equal(t, value2, retrievedValue2, "Retrieved value2 doesn't match in third datastore")
 	})
 
+	// Test idempotency of operations sequence
+	t.Run("SequenceIdempotency", func(t *testing.T) {
+		// Create a HAMT datastore
+		hamtDS1, err := NewHAMTDatastore(ctx, dagService, cid.Undef)
+		require.NoError(t, err, "Failed to create first HAMT datastore")
+
+		// Add a sequence of data
+		key1 := ds.NewKey("/test/sequence/key1")
+		value1 := []byte("sequence-value1")
+		err = hamtDS1.Put(ctx, key1, value1)
+		require.NoError(t, err, "Failed to put key1")
+
+		key2 := ds.NewKey("/test/sequence/key2")
+		value2 := []byte("sequence-value2")
+		err = hamtDS1.Put(ctx, key2, value2)
+		require.NoError(t, err, "Failed to put key2")
+
+		// Get the root CID after first sequence
+		rootCID1, err := hamtDS1.GetRoot(ctx)
+		require.NoError(t, err, "Failed to get first root CID")
+
+		// Create a new HAMT datastore
+		hamtDS2, err := NewHAMTDatastore(ctx, dagService, cid.Undef)
+		require.NoError(t, err, "Failed to create second HAMT datastore")
+
+		// Repeat the same sequence of operations
+		err = hamtDS2.Put(ctx, key1, value1)
+		require.NoError(t, err, "Failed to put key1 in second datastore")
+
+		err = hamtDS2.Put(ctx, key2, value2)
+		require.NoError(t, err, "Failed to put key2 in second datastore")
+
+		// Get the root CID after second sequence
+		rootCID2, err := hamtDS2.GetRoot(ctx)
+		require.NoError(t, err, "Failed to get second root CID")
+
+		// The root CIDs should be the same (idempotent sequence)
+		assert.Equal(t, rootCID1, rootCID2, "Root CIDs should be identical after applying the same sequence of operations")
+
+		// Now let's try a different sequence
+		hamtDS3, err := NewHAMTDatastore(ctx, dagService, cid.Undef)
+		require.NoError(t, err, "Failed to create third HAMT datastore")
+
+		// Apply operations in reverse order
+		err = hamtDS3.Put(ctx, key2, value2)
+		require.NoError(t, err, "Failed to put key2 first in third datastore")
+
+		err = hamtDS3.Put(ctx, key1, value1)
+		require.NoError(t, err, "Failed to put key1 second in third datastore")
+
+		// Get the root CID after reverse sequence
+		rootCID3, err := hamtDS3.GetRoot(ctx)
+		require.NoError(t, err, "Failed to get third root CID")
+
+		// The root CIDs should still be the same (order independence)
+		assert.Equal(t, rootCID1, rootCID3, "Root CIDs should be identical regardless of operation order")
+
+		// Let's also verify that re-applying the same operations doesn't change the root
+		err = hamtDS1.Put(ctx, key1, value1)
+		require.NoError(t, err, "Failed to re-put key1")
+
+		err = hamtDS1.Put(ctx, key2, value2)
+		require.NoError(t, err, "Failed to re-put key2")
+
+		// Get the root CID after re-applying
+		rootCID4, err := hamtDS1.GetRoot(ctx)
+		require.NoError(t, err, "Failed to get fourth root CID")
+
+		// The root CID should not change
+		assert.Equal(t, rootCID1, rootCID4, "Root CID should not change after re-applying the same operations")
+	})
+
 	// Test query functionality
 	t.Run("QueryOperations", func(t *testing.T) {
 		// Create a HAMT datastore
