@@ -88,7 +88,9 @@ func (m *StateManager) UpdateHeads(ctx context.Context, id peer.ID, heads []cid.
 	defer m.mu.Unlock()
 	member, ok := m.state.Members[id.String()]
 	if !ok {
-		member = &pb.Participant{}
+		member = &pb.Participant{
+			Metadata: make(map[string]string),
+		}
 		m.state.Members[id.String()] = member
 	}
 
@@ -170,6 +172,9 @@ func (m *StateManager) SetMeta(ctx context.Context, id peer.ID, metaData map[str
 		}
 		m.state.Members[id.String()] = member
 	} else {
+		if member.Metadata == nil {
+			member.Metadata = make(map[string]string)
+		}
 		for k, v := range metaData {
 			if current, exists := member.Metadata[k]; !exists || v != current {
 				changesMade = true
