@@ -140,7 +140,9 @@ func (env *testEnv) AddReplica(opts *Options) {
 	}
 
 	if debug {
-		log.SetLogLevel("crdt", "debug")
+		if err := log.SetLogLevel("crdt", "debug"); err != nil {
+			panic(err)
+		}
 	}
 }
 
@@ -151,7 +153,9 @@ func (env *testEnv) Cleanup() {
 		if err != nil {
 			env.t.Error(err)
 		}
-		os.RemoveAll(storeFolder(i))
+		defer func() {
+			_ = os.RemoveAll(storeFolder(i))
+		}()
 	}
 }
 
@@ -498,7 +502,9 @@ func TestTriggerSnapshot(t *testing.T) {
 
 	for i := 1; i < 101; i++ {
 		k := ds.NewKey(fmt.Sprintf("k%d", i))
-		replicas[0].Put(ctx, k, []byte("v1"))
+		if err := replicas[0].Put(ctx, k, []byte("v1")); err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	require.Eventually(t, func() bool {
@@ -569,7 +575,9 @@ func TestSnapshotAllowsLowerPriorityValueToResurface(t *testing.T) {
 
 	// Delete k3 from replica 0; this should create a removal delta for the v3-GreaterPriority value only
 	// (and not v3-LowerPriority, since replica 0 doesn't have DAG node B yet)
-	env.replicas[0].Delete(ctx, ds.NewKey("k3"))
+	if err := env.replicas[0].Delete(ctx, ds.NewKey("k3")); err != nil {
+		t.Fatal(err)
+	}
 
 	// Now replica 0 should see no value for k3
 	_, err = env.replicas[0].Get(ctx, ds.NewKey("k3"))

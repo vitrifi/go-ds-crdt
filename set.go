@@ -303,21 +303,21 @@ func (s *set) priorityKey(key string) ds.Key {
 	return s.keyPrefix(keysNs).ChildString(key).ChildString(prioritySuffix)
 }
 
-func (s *set) getPriority(ctx context.Context, key string) (uint64, error) {
-	valueK := s.valueKey(key)
-	data, err := s.store.Get(ctx, valueK)
-	if err != nil {
-		if err == ds.ErrNotFound {
-			return 0, nil
-		}
-		return 0, err
-	}
-	prio, _, err := decodeValue(data)
-	if err != nil {
-		return 0, err
-	}
-	return prio, nil
-}
+//func (s *set) getPriority(ctx context.Context, key string) (uint64, error) {
+//	valueK := s.valueKey(key)
+//	data, err := s.store.Get(ctx, valueK)
+//	if err != nil {
+//		if err == ds.ErrNotFound {
+//			return 0, nil
+//		}
+//		return 0, err
+//	}
+//	prio, _, err := decodeValue(data)
+//	if err != nil {
+//		return 0, err
+//	}
+//	return prio, nil
+//}
 
 func (s *set) setPriority(ctx context.Context, writeStore ds.Write, key string, prio uint64) error {
 	prioK := s.priorityKey(key)
@@ -529,14 +529,20 @@ func (s *set) putTombs(ctx context.Context, tombs []*pb.Element) error {
 			return err
 		}
 		if v == nil {
-			store.Delete(ctx, valueK)
-			store.Delete(ctx, s.priorityKey(key))
+			if err := store.Delete(ctx, valueK); err != nil {
+				return err
+			}
+			if err := store.Delete(ctx, s.priorityKey(key)); err != nil {
+				return err
+			}
 		} else {
 			candidateEncoded := encodeValue(p, v)
 			if err := store.Put(ctx, valueK, candidateEncoded); err != nil {
 				return err
 			}
-			s.setPriority(ctx, store, key, p)
+			if err := s.setPriority(ctx, store, key, p); err != nil {
+				return err
+			}
 		}
 
 		// Write tomb into store.

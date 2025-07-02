@@ -1816,11 +1816,14 @@ func (store *Datastore) triggerCompactionIfNeeded(ctx context.Context) error {
 
 // getHighestCommonCid gets the highest common cid of all members
 func (store *Datastore) getHighestCommonCid(ctx context.Context) (cid.Cid, uint64, error) {
-	heads := store.getAllMemberCommonHeads()
 	var (
 		c cid.Cid
 		h uint64
 	)
+	heads, err := store.getAllMemberCommonHeads()
+	if err != nil {
+		return c, h, err
+	}
 
 	offlineDAG := dag.NewDAGService(blockservice.New(store.bs, offline.Exchange(store.bs)))
 	ng := &crdtNodeGetter{NodeGetter: offlineDAG}
@@ -1838,7 +1841,7 @@ func (store *Datastore) getHighestCommonCid(ctx context.Context) (cid.Cid, uint6
 }
 
 // getAllMemberCommonHeads retrieves the DAG heads from all peers
-func (store *Datastore) getAllMemberCommonHeads() []cid.Cid {
+func (store *Datastore) getAllMemberCommonHeads() ([]cid.Cid, error) {
 	var cids []cid.Cid
 	cidCount := map[cid.Cid]int{}
 	var members int
@@ -1848,7 +1851,7 @@ func (store *Datastore) getAllMemberCommonHeads() []cid.Cid {
 		for _, c := range v.DagHeads {
 			id, err := cid.Cast(c.Cid)
 			if err != nil {
-				// TODO
+				return cids, err
 			}
 			cidCount[id]++
 		}
@@ -1860,10 +1863,10 @@ func (store *Datastore) getAllMemberCommonHeads() []cid.Cid {
 		}
 	}
 
-	return cids
+	return cids, nil
 }
 
-// walkBackDAG traverses the DAG and selects a stable head to compact from thats retainNodes behind the given startCID
+// walkBackDAG traverses the DAG and selects a stable head to compact from that's retainNodes behind the given startCID
 func (store *Datastore) walkBackDAG(ctx context.Context, startCID cid.Cid, retainNodes uint64) (cid.Cid, uint64, error) {
 	offlineDAG := dag.NewDAGService(blockservice.New(store.bs, offline.Exchange(store.bs)))
 	ng := crdtNodeGetter{NodeGetter: offlineDAG}
