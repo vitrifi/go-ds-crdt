@@ -52,8 +52,7 @@ func newCRDTSet(
 	logger logging.StandardLogger,
 	putHook func(key string, v []byte),
 	deleteHook func(key string),
-) (*set, error) {
-
+) *set {
 	set := &set{
 		namespace:  namespace,
 		store:      d,
@@ -62,8 +61,7 @@ func newCRDTSet(
 		putHook:    putHook,
 		deleteHook: deleteHook,
 	}
-
-	return set, nil
+	return set
 }
 
 // Add returns a new delta-set adding the given key/value.
@@ -94,7 +92,9 @@ func (s *set) Rmv(ctx context.Context, key string) (*pb.Delta, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer results.Close()
+	defer func() {
+		_ = results.Close()
+	}()
 
 	for r := range results.Next() {
 		if r.Error != nil {
@@ -219,7 +219,9 @@ func (s *set) Elements(ctx context.Context, q query.Query) (query.Results, error
 			sendResult(ctx, qctx, query.Result{Error: err}, out)
 			return
 		}
-		defer results.Close()
+		defer func() {
+			_ = results.Close()
+		}()
 
 		var entry query.Entry
 		for r := range results.Next() {
@@ -303,21 +305,21 @@ func (s *set) priorityKey(key string) ds.Key {
 	return s.keyPrefix(keysNs).ChildString(key).ChildString(prioritySuffix)
 }
 
-func (s *set) getPriority(ctx context.Context, key string) (uint64, error) {
-	valueK := s.valueKey(key)
-	data, err := s.store.Get(ctx, valueK)
-	if err != nil {
-		if err == ds.ErrNotFound {
-			return 0, nil
-		}
-		return 0, err
-	}
-	prio, _, err := decodeValue(data)
-	if err != nil {
-		return 0, err
-	}
-	return prio, nil
-}
+//func (s *set) getPriority(ctx context.Context, key string) (uint64, error) {
+//	valueK := s.valueKey(key)
+//	data, err := s.store.Get(ctx, valueK)
+//	if err != nil {
+//		if err == ds.ErrNotFound {
+//			return 0, nil
+//		}
+//		return 0, err
+//	}
+//	prio, _, err := decodeValue(data)
+//	if err != nil {
+//		return 0, err
+//	}
+//	return prio, nil
+//}
 
 func (s *set) setPriority(ctx context.Context, writeStore ds.Write, key string, prio uint64) error {
 	prioK := s.priorityKey(key)
@@ -386,7 +388,9 @@ func (s *set) findBestValue(ctx context.Context, key string, pendingTombIDs []st
 	if err != nil {
 		return nil, 0, err
 	}
-	defer results.Close()
+	defer func() {
+		_ = results.Close()
+	}()
 
 	var bestValue []byte
 	var bestPriority uint64
@@ -529,14 +533,20 @@ func (s *set) putTombs(ctx context.Context, tombs []*pb.Element) error {
 			return err
 		}
 		if v == nil {
-			store.Delete(ctx, valueK)
-			store.Delete(ctx, s.priorityKey(key))
+			if err := store.Delete(ctx, valueK); err != nil {
+				return err
+			}
+			if err := store.Delete(ctx, s.priorityKey(key)); err != nil {
+				return err
+			}
 		} else {
 			candidateEncoded := encodeValue(p, v)
 			if err := store.Put(ctx, valueK, candidateEncoded); err != nil {
 				return err
 			}
-			s.setPriority(ctx, store, key, p)
+			if err := s.setPriority(ctx, store, key, p); err != nil {
+				return err
+			}
 		}
 
 		// Write tomb into store.
@@ -620,14 +630,17 @@ func (s *set) datastoreSync(ctx context.Context, prefix ds.Key) error {
 }
 
 func encodeValue(prio uint64, value []byte) []byte {
-	buf := make([]byte, 8+len(value))
+	const bytesInUint64 = 8
+	bufSize := bytesInUint64 + len(value)
+	buf := make([]byte, bufSize)
 	binary.BigEndian.PutUint64(buf[:8], prio)
 	copy(buf[8:], value)
 	return buf
 }
 
 func decodeValue(encoded []byte) (uint64, []byte, error) {
-	if len(encoded) < 8 {
+	const bytesInUint64 = 8
+	if len(encoded) < bytesInUint64 {
 		return 0, nil, errors.New("encoded value too short")
 	}
 	prio := binary.BigEndian.Uint64(encoded[:8])

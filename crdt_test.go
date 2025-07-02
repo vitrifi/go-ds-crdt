@@ -142,7 +142,6 @@ func (mb *mockBroadcaster) Broadcast(ctx context.Context, data []byte) error {
 				// Sleep for a very small time that will
 				// effectively be pretty random
 				time.Sleep(time.Nanosecond)
-
 			}
 			timer := time.NewTimer(5 * time.Second)
 			defer timer.Stop()
@@ -251,7 +250,6 @@ func makeStore(t testing.TB, i int) ds.Datastore {
 	default:
 		t.Fatal("bad store type selected for tests")
 		return nil
-
 	}
 }
 
@@ -294,7 +292,9 @@ func makeNReplicas(t testing.TB, n int, opts *Options) ([]*Datastore, func()) {
 		}
 	}
 	if debug {
-		log.SetLogLevel("crdt", "debug")
+		if err := log.SetLogLevel("crdt", "debug"); err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	closeReplicas := func() {
@@ -304,7 +304,9 @@ func makeNReplicas(t testing.TB, n int, opts *Options) ([]*Datastore, func()) {
 			if err != nil {
 				t.Error(err)
 			}
-			os.RemoveAll(storeFolder(i))
+			defer func() {
+				_ = os.RemoveAll(storeFolder(i))
+			}()
 		}
 	}
 
@@ -367,7 +369,9 @@ func TestCRDTReplication(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer results.Close()
+	defer func() {
+		_ = results.Close()
+	}()
 	rest, err := results.Rest()
 	if err != nil {
 		t.Fatal(err)
@@ -405,7 +409,9 @@ func TestCRDTReplication(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer results.Close()
+	defer func() {
+		_ = results.Close()
+	}()
 
 	total := 0
 	for r := range results.Next() {
@@ -444,7 +450,7 @@ func TestCRDTReplication(t *testing.T) {
 // replicas on the same key, the resulting values converge to the same key.
 //
 // It does this by launching one go routine for every replica, where it replica
-// writes the value #replica-number repeteadly (nItems-times).
+// writes the value #replica-number repeatedly (nItems-times).
 //
 // Finally, it puts a final value for a single key in the first replica and
 // checks that all replicas got it.
@@ -545,7 +551,9 @@ func TestCRDTCatchUp(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer results.Close()
+	defer func() {
+		_ = results.Close()
+	}()
 	rest, err := results.Rest()
 	if err != nil {
 		t.Fatal(err)
@@ -583,10 +591,10 @@ func TestCRDTHooks(t *testing.T) {
 	var deleted int64
 
 	opts := DefaultOptions()
-	opts.PutHook = func(k ds.Key, v []byte) {
+	opts.PutHook = func(_ ds.Key, v []byte) {
 		atomic.AddInt64(&put, 1)
 	}
-	opts.DeleteHook = func(k ds.Key) {
+	opts.DeleteHook = func(_ ds.Key) {
 		atomic.AddInt64(&deleted, 1)
 	}
 
@@ -634,7 +642,7 @@ func TestCRDTBatch(t *testing.T) {
 	}
 
 	if _, err := replicas[0].Get(ctx, k); err != ds.ErrNotFound {
-		t.Fatal("should not have commited the batch")
+		t.Fatal("should not have committed the batch")
 	}
 
 	k2 := ds.RandomKey()
@@ -644,7 +652,7 @@ func TestCRDTBatch(t *testing.T) {
 	}
 
 	if _, err := replicas[0].Get(ctx, k2); err != nil {
-		t.Fatal("should have commited the batch: delta size was over threshold")
+		t.Fatal("should have committed the batch: delta size was over threshold")
 	}
 
 	err = btch.Delete(ctx, k)
@@ -834,7 +842,9 @@ func BenchmarkQueryElements(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	defer results.Close()
+	defer func() {
+		_ = results.Close()
+	}()
 
 	totalSize := 0
 	for r := range results.Next() {
@@ -915,10 +925,14 @@ func TestCRDTPutPutDelete(t *testing.T) {
 	if string(r0Res) != string(r1Res) {
 		fmt.Printf("r0Res: %s\nr1Res: %s\n", string(r0Res), string(r1Res))
 		t.Log("r0 dag")
-		replicas[0].PrintDAG(ctx)
+		if err := replicas[0].PrintDAG(ctx); err != nil {
+			t.Fatal(err)
+		}
 
 		t.Log("r1 dag")
-		replicas[1].PrintDAG(ctx)
+		if err = replicas[1].PrintDAG(ctx); err != nil {
+			t.Fatal(err)
+		}
 
 		t.Fatal("r0 and r1 should have the same value")
 	}
@@ -941,7 +955,6 @@ func TestMigration0to1(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-
 	}
 
 	// Overwrite n/2 items 5 times to have multiple tombstones per key
