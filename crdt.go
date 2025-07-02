@@ -295,11 +295,7 @@ func New(h Peer, store ds.Datastore, bs blockstore.Blockstore, namespace ds.Key,
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	set, err := newCRDTSet(ctx, store, fullSetNs, dagSyncer, opts.Logger, setPutHook, setDeleteHook)
-	if err != nil {
-		cancel()
-		return nil, fmt.Errorf("error setting up crdt set: %w", err)
-	}
+	set := newCRDTSet(ctx, store, fullSetNs, dagSyncer, opts.Logger, setPutHook, setDeleteHook)
 	heads, err := newHeads(ctx, store, fullHeadsNs, opts.Logger)
 	if err != nil {
 		cancel()
@@ -449,12 +445,10 @@ func (store *Datastore) handleNext(ctx context.Context) {
 		if !store.state.IsNew() && broadcast.Snapshot != nil &&
 			broadcast.Snapshot.DagHead != state.Snapshot.DagHead &&
 			!bytes.Equal(broadcast.Snapshot.DagHead.Cid, store.oldProcessedCID) {
-
 			start, err := cid.Cast(broadcast.Snapshot.DagHead.Cid)
 			if err != nil {
 				store.logger.Errorf("failed to parse broadcast snapshot cid: %v", err)
 				continue
-
 			}
 			end, err := cid.Cast(state.Snapshot.DagHead.Cid)
 			if err != nil {
@@ -1005,7 +999,6 @@ func (store *Datastore) processNode(ctx context.Context, _ *crdtNodeGetter, root
 		// We can return this child because it is not processed and we
 		// reserved it in the queue.
 		children = append(children, child)
-
 	}
 
 	return children, nil
@@ -1266,7 +1259,6 @@ func deltaMerge(d1, d2 *pb.Delta) *pb.Delta {
 // returns delta size and error
 func (store *Datastore) addToDelta(ctx context.Context, key string, value []byte) (int, error) {
 	return store.updateDelta(store.set.Add(ctx, key, value)), nil
-
 }
 
 // returns delta size and error
@@ -1618,7 +1610,6 @@ func (store *Datastore) restoreSnapshot(ctx context.Context, getter ipld.DAGServ
 		id := dshelp.MultihashToDsKey(link.Cid.Hash()).String()
 		if err := store.set.Merge(ctx, delta, id); err != nil {
 			return fmt.Errorf("failed to merge delta: %w", err)
-
 		}
 
 		return nil
@@ -1755,7 +1746,6 @@ func (store *Datastore) compact() {
 		}
 		timer.Reset(store.opts.CompactInterval)
 	}
-
 }
 
 // triggerCompactionIfNeeded handles compaction logic directly within the datastore

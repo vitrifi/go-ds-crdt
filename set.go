@@ -52,8 +52,7 @@ func newCRDTSet(
 	logger logging.StandardLogger,
 	putHook func(key string, v []byte),
 	deleteHook func(key string),
-) (*set, error) {
-
+) *set {
 	set := &set{
 		namespace:  namespace,
 		store:      d,
@@ -62,8 +61,7 @@ func newCRDTSet(
 		putHook:    putHook,
 		deleteHook: deleteHook,
 	}
-
-	return set, nil
+	return set
 }
 
 // Add returns a new delta-set adding the given key/value.

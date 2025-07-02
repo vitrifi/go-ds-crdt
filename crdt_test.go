@@ -142,7 +142,6 @@ func (mb *mockBroadcaster) Broadcast(ctx context.Context, data []byte) error {
 				// Sleep for a very small time that will
 				// effectively be pretty random
 				time.Sleep(time.Nanosecond)
-
 			}
 			timer := time.NewTimer(5 * time.Second)
 			defer timer.Stop()
@@ -251,7 +250,6 @@ func makeStore(t testing.TB, i int) ds.Datastore {
 	default:
 		t.Fatal("bad store type selected for tests")
 		return nil
-
 	}
 }
 
@@ -953,7 +951,6 @@ func TestMigration0to1(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-
 	}
 
 	// Overwrite n/2 items 5 times to have multiple tombstones per key
