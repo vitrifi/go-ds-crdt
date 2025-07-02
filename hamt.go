@@ -26,7 +26,8 @@ func loadOrCreateHAMT(ctx context.Context, dagService ipld.DAGService, rootCID c
 		return hamt.NewHamtFromDag(dagService, rootNode)
 	}
 	// Create a new HAMT shard
-	return hamt.NewShard(dagService, 8)
+	const shardTableSize = 8
+	return hamt.NewShard(dagService, shardTableSize)
 }
 
 func valueToNode(ctx context.Context, dagService ipld.DAGService, value []byte) (ipld.Node, error) {

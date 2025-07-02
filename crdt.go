@@ -168,23 +168,32 @@ func (opts *Options) verify() error {
 
 // DefaultOptions initializes an Options object with sensible defaults.
 func DefaultOptions() *Options {
+	const (
+		workers            = 5
+		timeoutDuration    = 5 * time.Minute
+		byteIn1MB          = 1024
+		hourInADay         = 24
+		daysInAWeek        = 7
+		compactDagSize     = 10000
+		compactRetainNodes = 1000
+	)
 	return &Options{
 		Logger:              logging.Logger("crdt"),
 		RebroadcastInterval: time.Minute,
 		PutHook:             nil,
 		DeleteHook:          nil,
-		NumWorkers:          5,
-		DAGSyncerTimeout:    5 * time.Minute,
+		NumWorkers:          workers,
+		DAGSyncerTimeout:    timeoutDuration,
 		// always keeping
 		// https://github.com/libp2p/go-libp2p-core/blob/master/network/network.go#L23
 		// in sight
-		MaxBatchDeltaSize:   1 * 1024 * 1024, // 1MB,
+		MaxBatchDeltaSize:   1 * byteIn1MB * byteIn1MB, // 1MB,
 		RepairInterval:      time.Hour,
 		MultiHeadProcessing: false,
-		TTL:                 time.Hour * 24 * 7,
+		TTL:                 time.Hour * hourInADay * daysInAWeek,
 		CompactInterval:     time.Hour,
-		CompactDagSize:      10000,
-		CompactRetainNodes:  1000,
+		CompactDagSize:      compactDagSize,
+		CompactRetainNodes:  compactRetainNodes,
 	}
 }
 
@@ -361,31 +370,38 @@ func New(h Peer, store ds.Datastore, bs blockstore.Blockstore, namespace ds.Key,
 			dstore.dagWorker()
 		}()
 	}
-	dstore.wg.Add(6)
+
+	dstore.wg.Add(1)
 	go func() {
 		defer dstore.wg.Done()
 		dstore.handleNext(ctx)
 	}()
+
+	dstore.wg.Add(1)
 	go func() {
 		defer dstore.wg.Done()
 		dstore.rebroadcast(ctx)
 	}()
 
+	dstore.wg.Add(1)
 	go func() {
 		defer dstore.wg.Done()
 		dstore.repair(ctx)
 	}()
 
+	dstore.wg.Add(1)
 	go func() {
 		defer dstore.wg.Done()
 		dstore.logStats(ctx)
 	}()
 
+	dstore.wg.Add(1)
 	go func() {
 		defer dstore.wg.Done()
 		dstore.compact()
 	}()
 
+	dstore.wg.Add(1)
 	go func() {
 		defer dstore.wg.Done()
 	}()
@@ -574,11 +590,16 @@ func (store *Datastore) encodeBroadcast(ctx context.Context, state *pb.StateBroa
 }
 
 func randomizeInterval(d time.Duration) time.Duration {
-	// 30% of the configured interval
-	leeway := (d * 30 / 100)
+	const (
+		leewayPercentage = 0.3
+		double           = 2
+	)
+
+	leeway := time.Duration(float64(d) * leewayPercentage) // 30% of the configured interval
+
 	// A random number between -leeway|+leeway
 	randGen := rand.New(rand.NewSource(time.Now().UnixNano()))
-	randomInterval := time.Duration(randGen.Int63n(int64(leeway*2))) - leeway
+	randomInterval := time.Duration(randGen.Int63n(int64(double*leeway))) - leeway
 	return d + randomInterval
 }
 
@@ -669,7 +690,8 @@ func (store *Datastore) rebroadcastHeads(ctx context.Context) {
 
 // Log some stats every 5 minutes.
 func (store *Datastore) logStats(ctx context.Context) {
-	ticker := time.NewTicker(5 * time.Minute)
+	const duration = 5 * time.Minute
+	ticker := time.NewTicker(duration)
 	for {
 		select {
 		case <-ticker.C:
@@ -1039,7 +1061,8 @@ func (store *Datastore) repairDAG(ctx context.Context) error {
 	exitLogging := make(chan struct{})
 	defer close(exitLogging)
 	go func() {
-		ticker := time.NewTicker(5 * time.Minute)
+		const duration = 5 * time.Minute
+		ticker := time.NewTicker(duration)
 		for {
 			select {
 			case <-exitLogging:

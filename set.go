@@ -624,14 +624,17 @@ func (s *set) datastoreSync(ctx context.Context, prefix ds.Key) error {
 }
 
 func encodeValue(prio uint64, value []byte) []byte {
-	buf := make([]byte, 8+len(value))
+	const bytesInUint64 = 8
+	bufSize := bytesInUint64 + len(value)
+	buf := make([]byte, bufSize)
 	binary.BigEndian.PutUint64(buf[:8], prio)
 	copy(buf[8:], value)
 	return buf
 }
 
 func decodeValue(encoded []byte) (uint64, []byte, error) {
-	if len(encoded) < 8 {
+	const bytesInUint64 = 8
+	if len(encoded) < bytesInUint64 {
 		return 0, nil, errors.New("encoded value too short")
 	}
 	prio := binary.BigEndian.Uint64(encoded[:8])
