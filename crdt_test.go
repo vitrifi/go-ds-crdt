@@ -551,7 +551,9 @@ func TestCRDTCatchUp(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer results.Close()
+	defer func() {
+		_ = results.Close()
+	}()
 	rest, err := results.Rest()
 	if err != nil {
 		t.Fatal(err)
@@ -840,7 +842,9 @@ func BenchmarkQueryElements(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	defer results.Close()
+	defer func() {
+		_ = results.Close()
+	}()
 
 	totalSize := 0
 	for r := range results.Next() {

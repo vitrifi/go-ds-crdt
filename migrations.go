@@ -104,7 +104,9 @@ func (store *Datastore) migrate0to1(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	defer results.Close()
+	defer func() {
+		_ = results.Close()
+	}()
 
 	// Results are not going to be ordered per key (I tested). Therefore,
 	// we can keep a list of keys in memory to avoid findingBestValue for

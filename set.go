@@ -92,7 +92,9 @@ func (s *set) Rmv(ctx context.Context, key string) (*pb.Delta, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer results.Close()
+	defer func() {
+		_ = results.Close()
+	}()
 
 	for r := range results.Next() {
 		if r.Error != nil {
@@ -217,7 +219,9 @@ func (s *set) Elements(ctx context.Context, q query.Query) (query.Results, error
 			sendResult(ctx, qctx, query.Result{Error: err}, out)
 			return
 		}
-		defer results.Close()
+		defer func() {
+			_ = results.Close()
+		}()
 
 		var entry query.Entry
 		for r := range results.Next() {
@@ -384,7 +388,9 @@ func (s *set) findBestValue(ctx context.Context, key string, pendingTombIDs []st
 	if err != nil {
 		return nil, 0, err
 	}
-	defer results.Close()
+	defer func() {
+		_ = results.Close()
+	}()
 
 	var bestValue []byte
 	var bestPriority uint64
