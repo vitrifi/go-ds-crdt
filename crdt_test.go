@@ -591,10 +591,10 @@ func TestCRDTHooks(t *testing.T) {
 	var deleted int64
 
 	opts := DefaultOptions()
-	opts.PutHook = func(k ds.Key, v []byte) {
+	opts.PutHook = func(_ ds.Key, v []byte) {
 		atomic.AddInt64(&put, 1)
 	}
-	opts.DeleteHook = func(k ds.Key) {
+	opts.DeleteHook = func(_ ds.Key) {
 		atomic.AddInt64(&deleted, 1)
 	}
 

@@ -905,7 +905,7 @@ func (store *Datastore) MarkClean(ctx context.Context) {
 
 // processNode merges the delta in a node and has the logic about what to do
 // then.
-func (store *Datastore) processNode(ctx context.Context, ng *crdtNodeGetter, root cid.Cid, rootPrio uint64, delta *pb.Delta, node ipld.Node) ([]cid.Cid, error) {
+func (store *Datastore) processNode(ctx context.Context, _ *crdtNodeGetter, root cid.Cid, rootPrio uint64, delta *pb.Delta, node ipld.Node) ([]cid.Cid, error) {
 	// First,  merge the delta in this node.
 	current := node.Cid()
 	blockKey := dshelp.MultihashToDsKey(current.Hash()).String()
@@ -1546,7 +1546,7 @@ func (store *Datastore) DotDAG(ctx context.Context, w io.Writer) error {
 	}
 	_, _ = fmt.Fprintln(w, "}")
 
-	err = store.WalkDAG(ctx, heads, func(from cid.Cid, depth uint64, nd ipld.Node, delta *pb.Delta) error {
+	err = store.WalkDAG(ctx, heads, func(from cid.Cid, _ uint64, nd ipld.Node, delta *pb.Delta) error {
 		cidStr := from.String()
 		_, _ = fmt.Fprintf(w, "%s [label=\"%d | %s: +%d -%d\"]\n",
 			cidStr, delta.GetPriority(), cidStr[len(cidStr)-4:], len(delta.GetElements()), len(delta.GetTombstones()))
