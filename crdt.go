@@ -1428,7 +1428,7 @@ func (b *batch) Put(ctx context.Context, key ds.Key, value []byte) error {
 		return err
 	}
 	if size > b.store.opts.MaxBatchDeltaSize {
-		b.store.logger.Warn("delta size over MaxBatchDeltaSize. Commiting.")
+		b.store.logger.Warn("delta size over MaxBatchDeltaSize. Committing.")
 		return b.Commit(ctx)
 	}
 	return nil
@@ -1440,7 +1440,7 @@ func (b *batch) Delete(ctx context.Context, key ds.Key) error {
 		return err
 	}
 	if size > b.store.opts.MaxBatchDeltaSize {
-		b.store.logger.Warn("delta size over MaxBatchDeltaSize. Commiting.")
+		b.store.logger.Warn("delta size over MaxBatchDeltaSize. Committing.")
 		return b.Commit(ctx)
 	}
 	return nil

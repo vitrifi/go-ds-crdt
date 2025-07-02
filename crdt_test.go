@@ -450,7 +450,7 @@ func TestCRDTReplication(t *testing.T) {
 // replicas on the same key, the resulting values converge to the same key.
 //
 // It does this by launching one go routine for every replica, where it replica
-// writes the value #replica-number repeteadly (nItems-times).
+// writes the value #replica-number repeatedly (nItems-times).
 //
 // Finally, it puts a final value for a single key in the first replica and
 // checks that all replicas got it.
@@ -640,7 +640,7 @@ func TestCRDTBatch(t *testing.T) {
 	}
 
 	if _, err := replicas[0].Get(ctx, k); err != ds.ErrNotFound {
-		t.Fatal("should not have commited the batch")
+		t.Fatal("should not have committed the batch")
 	}
 
 	k2 := ds.RandomKey()
@@ -650,7 +650,7 @@ func TestCRDTBatch(t *testing.T) {
 	}
 
 	if _, err := replicas[0].Get(ctx, k2); err != nil {
-		t.Fatal("should have commited the batch: delta size was over threshold")
+		t.Fatal("should have committed the batch: delta size was over threshold")
 	}
 
 	err = btch.Delete(ctx, k)
