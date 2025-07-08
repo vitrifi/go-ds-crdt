@@ -7,6 +7,7 @@ import (
 	dshelp "github.com/ipfs/boxo/datastore/dshelp"
 	"github.com/ipfs/go-cid"
 	ds "github.com/ipfs/go-datastore"
+	"github.com/ipfs/go-ds-crdt/clset"
 	"github.com/ipfs/go-ds-crdt/pb"
 )
 
@@ -178,7 +179,7 @@ func (store *Datastore) walkReplayPath(ctx context.Context, heads []cid.Cid, sto
 func (store *Datastore) replayDAGPath(ctx context.Context, path []cid.Cid, stopAt cid.Cid, hamtDS *HAMTDatastore) (cid.Cid, []cid.Cid, error) {
 	var processed []cid.Cid
 
-	set, err := newCRDTSet(ctx, hamtDS, ds.NewKey(""), store.dagService, store.logger, nil, nil)
+	set, err := clset.New(ctx, hamtDS, ds.NewKey(""), store.dagService, store.logger, nil, nil)
 	if err != nil {
 		return cid.Undef, nil, err
 	}
@@ -212,7 +213,7 @@ func (store *Datastore) restoreSnapshot(ctx context.Context, snapshotInfo *Snaps
 	}
 
 	// Create a temporary Set backed by HAMT
-	snapshotSet, err := newCRDTSet(ctx, hamtDS, ds.NewKey(""), store.dagService, store.logger, nil, nil)
+	snapshotSet, err := clset.New(ctx, hamtDS, ds.NewKey(""), store.dagService, store.logger, nil, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create snapshot set: %w", err)
 	}
