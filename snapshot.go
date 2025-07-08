@@ -11,6 +11,7 @@ import (
 	dag "github.com/ipfs/boxo/ipld/merkledag"
 	"github.com/ipfs/go-cid"
 	ds "github.com/ipfs/go-datastore"
+	"github.com/ipfs/go-ds-crdt/clset"
 	"github.com/ipfs/go-ds-crdt/pb"
 	ipld "github.com/ipfs/go-ipld-format"
 	"google.golang.org/protobuf/proto"
@@ -58,7 +59,7 @@ func (store *Datastore) buildSnapshot(
 	}
 
 	// Create a set using the HAMT datastore
-	snapshotSet, err := newCRDTSet(
+	snapshotSet, err := clset.New(
 		ctx,
 		hamtDS,
 		ds.NewKey(""),
@@ -203,9 +204,9 @@ func (store *Datastore) loadSnapshotInfo(
 func (store *Datastore) collectDeltasFromDAG(
 	ctx context.Context,
 	startCID, endCID cid.Cid, // pass cid.Undef for no end bound
-) ([]*pb.Delta, []string, error) {
+) ([]*pb.CLSetDelta, []string, error) {
 	var (
-		deltas   []*pb.Delta
+		deltas   []*pb.CLSetDelta
 		blockIDs []string
 		visited  = make(map[string]struct{})
 		queue    = []cid.Cid{startCID}
