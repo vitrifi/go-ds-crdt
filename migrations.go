@@ -4,11 +4,8 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
-	"fmt"
-	"strings"
 
 	ds "github.com/ipfs/go-datastore"
-	query "github.com/ipfs/go-datastore/query"
 )
 
 // Use this to detect if we need to run migrations.
@@ -47,7 +44,7 @@ func (store *Datastore) setVersion(ctx context.Context, v uint64) error {
 }
 
 func (store *Datastore) applyMigrations(ctx context.Context) error {
-	v, err := store.getVersion(ctx)
+	/*v, err := store.getVersion(ctx)
 	if err != nil {
 		return err
 	}
@@ -68,10 +65,11 @@ func (store *Datastore) applyMigrations(ctx context.Context) error {
 	case version:
 		store.logger.Infof("CRDT database format v%d", version)
 		return nil
-	}
+	}*/
 	return nil
 }
 
+/*
 // migrate0to1 re-sets all the values and priorities of previously tombstoned
 // elements to deal with the aftermath of
 // https://github.com/ipfs/go-ds-crdt/issues/238. This bug caused that the
@@ -159,3 +157,4 @@ func (store *Datastore) migrate0to1(ctx context.Context) error {
 	s.logger.Infof("Migration v0 to v1 finished (%d elements affected)", total)
 	return nil
 }
+*/

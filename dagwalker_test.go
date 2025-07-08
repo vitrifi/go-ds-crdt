@@ -150,7 +150,7 @@ func TestWalkReplayPath(t *testing.T) {
 }
 
 func makeAndAdd(datastore *Datastore, ctx context.Context, priority int, parents []cid.Cid) cid.Cid {
-	node, err := makeNode(&pb.Delta{Priority: uint64(priority)}, parents)
+	node, err := makeNode(&pb.CLSetDelta{Priority: uint64(priority)}, parents)
 	if err != nil {
 		panic(err)
 	}
