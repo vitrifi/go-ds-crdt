@@ -42,10 +42,10 @@ jobs:
       with:
         go-version: "1.24"
 
+    - name: tests
+      run: go test -timeout 30m -v -run "Test" .
+
     - name: lint
       uses: golangci/golangci-lint-action@v8
       with:
         version: v2.1
-
-    - name: tests
-      run: go test -timeout 30m -v -run "Test" .
