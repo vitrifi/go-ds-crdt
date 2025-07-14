@@ -6,6 +6,7 @@ import (
 	"crypto/sha512"
 	"errors"
 	"fmt"
+	"math"
 	"math/rand"
 	"os"
 	"sync"
@@ -1142,4 +1143,218 @@ func TestGetAllMemberCommonHeads(t *testing.T) {
 	require.Len(t, commonHeads, 2)
 	require.Contains(t, commonHeads, head1CID)
 	require.Contains(t, commonHeads, head2CID)
+}
+
+func TestHeightOverflowOnSingleReplica(t *testing.T) {
+	ctx := context.Background()
+
+	// Init the datastore.
+	bs := mdutils.Bserv()
+	dagSvc := merkledag.NewDAGService(bs)
+	dagSync := &mockDAGSvc{
+		DAGService: dagSvc,
+		bs:         bs.Blockstore(),
+	}
+	h := newMockPeer(fmt.Sprintf("peer-%d", 0))
+	store, err := New(h, makeStore(t, 0), bs.Blockstore(), ds.NewKey("crdttest"), dagSync, nil, DefaultOptions())
+	require.NoError(t, err)
+
+	// Add to the DAG a new node with height equal to 2^64-1, i.e. MaxUint64.
+	heads, _, err := store.heads.List(ctx)
+	require.NoError(t, err)
+	delta1, height1 := &pb.Delta{
+		Elements: []*pb.Element{
+			{
+				Key:   "k1",
+				Value: []byte("v1"),
+			},
+		},
+		Tombstones: nil,
+	}, uint64(math.MaxUint64)
+	nd, err := store.putBlock(ctx, heads, height1, delta1)
+	require.NoError(t, err)
+	_, err = store.processNode(ctx, nd.Cid(), &crdtNodeGetter{store.dagService}, height1, delta1, nd)
+	require.NoError(t, err)
+	heads, _, err = store.heads.List(ctx)
+	maxHeightNodeCid := heads[0]
+	require.NoError(t, err)
+
+	// Add another node via Datastore to trigger a height increment by 1.
+	delta2 := &pb.Delta{
+		Elements: []*pb.Element{
+			{
+				Key:   "k2",
+				Value: []byte("v2"),
+			},
+		},
+		Tombstones: nil,
+	}
+	gotCid, err := store.addDAGNode(ctx, delta2)
+	require.NoError(t, err)
+	require.NotEmpty(t, gotCid)
+
+	// The head should be replaced here with the new DAG node.
+	// The height should be zero then due to the overflow.
+	heads, height, err := store.heads.List(ctx)
+	require.NoError(t, err)
+	require.Equal(t, len(heads), 1)
+	require.Equal(t, heads[0], gotCid)
+	require.NotEqual(t, heads[0], maxHeightNodeCid)
+	require.Empty(t, height)
+
+	// Lets's check that the two nodes are there.
+	valuesK1, err := store.Get(ctx, ds.NewKey("k1"))
+	require.NoError(t, err)
+	require.NotEmpty(t, valuesK1)
+	valuesK2, err := store.Get(ctx, ds.NewKey("k2"))
+	require.NoError(t, err)
+	require.NotEmpty(t, valuesK2)
+}
+
+func TestHeightOverflowOnMultipleReplicaDatastore(t *testing.T) {
+	ctx := context.Background()
+
+	// Init the datastore.
+	replicas, closeReplicas := makeNReplicas(t, 2, nil)
+	defer closeReplicas() // Init the datastore.
+
+	r0, r1 := replicas[0], replicas[1]
+
+	// Add to the DAGs a new node with height equal to 2^64-1, i.e. MaxUint64.
+	v0, v1, v2 := []byte("v0"), []byte("v1"), []byte("v2")
+	delta0 := &pb.Delta{
+		Elements:   []*pb.Element{{Key: "k0", Value: v0}},
+		Tombstones: nil,
+	}
+	maxHeight := uint64(math.MaxUint64)
+
+	h0, _, err := r0.heads.List(ctx)
+	require.NoError(t, err)
+	n0, err := r0.putBlock(ctx, h0, maxHeight, delta0)
+	require.NoError(t, err)
+	_, err = r0.processNode(ctx, n0.Cid(), &crdtNodeGetter{r0.dagService}, maxHeight, delta0, n0)
+	require.NoError(t, err)
+	_, _, err = r0.heads.List(ctx)
+	require.NoError(t, err)
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		err = r1.Put(ctx, ds.NewKey("k1"), v1)
+		if err != nil {
+			t.Error(err)
+		}
+	}()
+	wg.Wait()
+
+	// Wait for convergence
+	RequireConvergence(t, replicas, ctx)
+
+	// Add another node via Datastore on the first replica to trigger a height increment by 1.
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		err = r0.Put(ctx, ds.NewKey("k2"), v2)
+		if err != nil {
+			t.Error(err)
+		}
+	}()
+	wg.Wait()
+
+	// Wait for convergence
+	RequireConvergence(t, replicas, ctx)
+
+	// Lets's check that the two nodes are there.
+	heads, gotHeight, err := r0.heads.List(ctx)
+	require.NoError(t, err)
+	require.Equal(t, gotHeight, uint64(0))
+	ng := &crdtNodeGetter{NodeGetter: r0.dagService}
+	_, delta, err := ng.GetDelta(ctx, heads[0])
+	require.NoError(t, err)
+	require.Equal(t, "elements:{key:\"/k2\"  value:\"v2\"}", delta.String())
+	valuesK2, err := r0.Get(ctx, ds.NewKey("k2"))
+	require.NoError(t, err)
+	require.Equal(t, v2, valuesK2)
+	valuesK1, err := r0.Get(ctx, ds.NewKey("k1"))
+	require.NoError(t, err)
+	require.Equal(t, v1, valuesK1)
+	valuesK0, err := r0.Get(ctx, ds.NewKey("k0"))
+	require.NoError(t, err)
+	require.Equal(t, v0, valuesK0)
+
+	valuesK2, err = r1.Get(ctx, ds.NewKey("k2"))
+	require.NoError(t, err)
+	require.Equal(t, v2, valuesK2)
+	valuesK1, err = r1.Get(ctx, ds.NewKey("k1"))
+	require.NoError(t, err)
+	require.Equal(t, v1, valuesK1)
+	valuesK0, err = r1.Get(ctx, ds.NewKey("k0"))
+	require.NoError(t, err)
+	require.Equal(t, v0, valuesK0)
+}
+
+func TestHeightOverflowOnSnapshotOverSingleReplica(t *testing.T) {
+	ctx := context.Background()
+
+	// Init the datastore.
+	opts := DefaultOptions()
+	opts.CompactDagSize = 1
+	opts.CompactRetainNodes = 1
+	replicas, closeReplicas := makeNReplicas(t, 2, opts)
+	defer closeReplicas() // Init the datastore.
+	datastore := replicas[0]
+
+	// Define some variables.
+	v0, v1, v2 := []byte("v000"), []byte("v001"), []byte("v002")
+	delta0 := &pb.Delta{
+		Elements:   []*pb.Element{{Key: "k000", Value: v0}},
+		Tombstones: nil,
+	}
+	maxHeight := uint64(math.MaxUint64)
+
+	// Init the tree with 50 nodes.
+	firstBatch := 50
+	for i := 0; i < firstBatch; i++ {
+		key := fmt.Sprintf("k%d", i)
+		value := []byte(fmt.Sprintf("v%d", i))
+		require.NoError(t, datastore.Put(ctx, ds.NewKey(key), value))
+	}
+
+	// Add to the DAGs a new node with height equal to 2^64-1, i.e. MaxUint64.
+	cids, _, err := datastore.heads.List(ctx) // len(h0) = 0
+	require.NoError(t, err)
+	n0, err := datastore.putBlock(ctx, cids, maxHeight, delta0)
+	require.NoError(t, err)
+	_, err = datastore.processNode(ctx, n0.Cid(), &crdtNodeGetter{datastore.dagService}, maxHeight, delta0, n0)
+	require.NoError(t, err)
+	_, height, err := datastore.heads.List(ctx)
+	require.NoError(t, err)
+	require.Equal(t, maxHeight, height)
+
+	// Add a node to trigger the overflow.
+	require.NoError(t, datastore.Put(ctx, ds.NewKey("k001"), v1))
+	_, height, err = datastore.heads.List(ctx)
+	require.NoError(t, err)
+	require.Empty(t, height) // The snapshot height is now zero due to the overflow.
+
+	// Manually trigger the snapshot.
+	require.NoError(t, datastore.triggerCompactionIfNeeded(ctx))
+
+	// The overflow causes the highest common CID to be considered 0. Hence, no compaction/snapshot is triggered.
+	m, ok := datastore.state.state.Members[datastore.h.ID().String()]
+	require.True(t, ok, "our peerid should exist in the state")
+	require.Nil(t, m.Snapshot)
+
+	// Let's add another one to have a non-zero highest common CID.
+	require.NoError(t, datastore.Put(ctx, ds.NewKey("k002"), v2))
+	require.NoError(t, datastore.triggerCompactionIfNeeded(ctx))
+	m, ok = datastore.state.state.Members[datastore.h.ID().String()]
+	require.True(t, ok, "our peerid should exist in the state")
+	require.NotNil(t, m.Snapshot)
+	snapshotRoot := cid.MustParse(m.Snapshot.SnapshotKey.Cid)
+	snapInfo01, err := datastore.loadSnapshotInfo(ctx, snapshotRoot)
+	require.NoError(t, err)
+	require.True(t, snapInfo01.WrapperCID.Defined())
+	require.Equal(t, maxHeight, snapInfo01.Height) // The snapshot height is the max uint64.
 }
