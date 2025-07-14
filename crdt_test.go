@@ -1272,7 +1272,7 @@ func TestHeightOverflowOnMultipleReplicaDatastore(t *testing.T) {
 	ng := &crdtNodeGetter{NodeGetter: r0.dagService}
 	_, delta, err := ng.GetDelta(ctx, heads[0])
 	require.NoError(t, err)
-	require.Equal(t, "elements:{key:\"/k2\" value:\"v2\"}", delta.String())
+	require.Equal(t, "elements:{key:\"/k2\"  value:\"v2\"}", delta.String())
 	valuesK2, err := r0.Get(ctx, ds.NewKey("k2"))
 	require.NoError(t, err)
 	require.Equal(t, v2, valuesK2)
@@ -1294,56 +1294,67 @@ func TestHeightOverflowOnMultipleReplicaDatastore(t *testing.T) {
 	require.Equal(t, v0, valuesK0)
 }
 
-func TestHeightOverflowAndSnapshots(t *testing.T) {
+func TestHeightOverflowOnSnapshotOverSingleReplica(t *testing.T) {
 	ctx := context.Background()
 
 	// Init the datastore.
-	replicas, closeReplicas := makeNReplicas(t, 1, nil)
+	opts := DefaultOptions()
+	opts.CompactDagSize = 1
+	opts.CompactRetainNodes = 1
+	replicas, closeReplicas := makeNReplicas(t, 2, opts)
 	defer closeReplicas() // Init the datastore.
 	datastore := replicas[0]
 
-	// Add to the DAGs a new node with height equal to 2^64-1, i.e. MaxUint64.
-	v0, v1 := []byte("v0"), []byte("v1")
+	// Define some variables.
+	v0, v1, v2 := []byte("v000"), []byte("v001"), []byte("v002")
 	delta0 := &pb.Delta{
-		Elements:   []*pb.Element{{Key: "k0", Value: v0}},
+		Elements:   []*pb.Element{{Key: "k000", Value: v0}},
 		Tombstones: nil,
 	}
-	maxHeight, overflowedHeight := uint64(math.MaxUint64), uint64(0)
+	maxHeight := uint64(math.MaxUint64)
 
-	h0, _, err := datastore.heads.List(ctx) // len(h0) = 0
+	// Init the tree with 50 nodes.
+	firstBatch := 50
+	for i := 0; i < firstBatch; i++ {
+		key := fmt.Sprintf("k%d", i)
+		value := []byte(fmt.Sprintf("v%d", i))
+		require.NoError(t, datastore.Put(ctx, ds.NewKey(key), value))
+	}
+
+	// Add to the DAGs a new node with height equal to 2^64-1, i.e. MaxUint64.
+	cids, _, err := datastore.heads.List(ctx) // len(h0) = 0
 	require.NoError(t, err)
-	n0, err := datastore.putBlock(ctx, h0, maxHeight, delta0)
+	n0, err := datastore.putBlock(ctx, cids, maxHeight, delta0)
 	require.NoError(t, err)
 	_, err = datastore.processNode(ctx, n0.Cid(), &crdtNodeGetter{datastore.dagService}, maxHeight, delta0, n0)
 	require.NoError(t, err)
-	_, _, err = datastore.heads.List(ctx)
+	_, height, err := datastore.heads.List(ctx)
 	require.NoError(t, err)
-
-	// The snapshot height is 2^64-1, i.e. MaxUint64.
-	h0, _, err = datastore.heads.List(ctx) // len(h0) = 1
-	require.NoError(t, err)
-	snapInfo00, err := datastore.compactAndSnapshot(ctx, h0[0], cid.Undef)
-	require.NoError(t, err)
-	require.True(t, snapInfo00.WrapperCID.Defined())
-	require.Equal(t, maxHeight, snapInfo00.Height)
+	require.Equal(t, maxHeight, height)
 
 	// Add a node to trigger the overflow.
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		err = datastore.Put(ctx, ds.NewKey("k1"), v1)
-		if err != nil {
-			t.Error(err)
-		}
-	}()
-	wg.Wait()
-
-	// The snapshot height is now zero.
-	h0, _, err = datastore.heads.List(ctx)
+	require.NoError(t, datastore.Put(ctx, ds.NewKey("k001"), v1))
+	_, height, err = datastore.heads.List(ctx)
 	require.NoError(t, err)
-	snapInfo01, err := datastore.compactAndSnapshot(ctx, h0[0], cid.Undef)
+	require.Empty(t, height) // The snapshot height is now zero due to the overflow.
+
+	// Manually trigger the snapshot.
+	require.NoError(t, datastore.triggerCompactionIfNeeded(ctx))
+
+	// The overflow causes the highest common CID to be considered 0. Hence, no compaction/snapshot is triggered.
+	m, ok := datastore.state.state.Members[datastore.h.ID().String()]
+	require.True(t, ok, "our peerid should exist in the state")
+	require.Nil(t, m.Snapshot)
+
+	// Let's add another one to have a non-zero highest common CID.
+	require.NoError(t, datastore.Put(ctx, ds.NewKey("k002"), v2))
+	require.NoError(t, datastore.triggerCompactionIfNeeded(ctx))
+	m, ok = datastore.state.state.Members[datastore.h.ID().String()]
+	require.True(t, ok, "our peerid should exist in the state")
+	require.NotNil(t, m.Snapshot)
+	snapshotRoot := cid.MustParse(m.Snapshot.SnapshotKey.Cid)
+	snapInfo01, err := datastore.loadSnapshotInfo(ctx, snapshotRoot)
 	require.NoError(t, err)
 	require.True(t, snapInfo01.WrapperCID.Defined())
-	require.Equal(t, overflowedHeight, snapInfo01.Height)
+	require.Equal(t, maxHeight, snapInfo01.Height) // The snapshot height is the max uint64.
 }
