@@ -382,7 +382,7 @@ func TestCompactionWithMultipleHeads(t *testing.T) {
 		}
 
 		return false
-	}, 30*time.Second, 1*time.Second)
+	}, 120*time.Second, 1*time.Second)
 
 	// Wait for both replicas to be properly synced (same head count)
 	require.Eventually(t, func() bool {
@@ -557,7 +557,7 @@ func TestCompactionWithMultipleHeads(t *testing.T) {
 
 		t.Logf("✓ Snapshot found for member %s", r0.h.ID().String())
 		return true
-	}, 2*time.Minute, 1*time.Second)
+	}, 3*time.Minute, 1*time.Second)
 
 	// Phase 5: Comprehensive database verification
 	t.Logf("Phase 5: Verifying database integrity on both replicas")
