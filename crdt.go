@@ -653,8 +653,8 @@ func (store *Datastore) rebroadcastHeads(ctx context.Context) {
 	store.seenHeadsMux.RUnlock()
 	store.logger.Debugf("rebroadcastHeads %d", len(headsToBroadcast))
 
-	if len(headsToBroadcast) > 0 {
-		err = store.state.UpdateHeads(ctx, store.h.ID(), headsToBroadcast, true)
+	if len(heads) > 0 {
+		err = store.state.UpdateHeads(ctx, store.h.ID(), heads, true)
 		if err != nil {
 			store.logger.Warn("broadcast failed: %v", err)
 		}
