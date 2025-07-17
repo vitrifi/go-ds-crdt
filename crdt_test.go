@@ -32,7 +32,7 @@ import (
 )
 
 var numReplicas = 15
-var debug = true
+var debug = false
 
 const (
 	mapStore = iota
