@@ -360,7 +360,7 @@ func NewIntegrationTestReplicas(t testing.TB, n int, opts *crdt.Options) *Integr
 	cleanup := func() {
 		for _, r := range replicas {
 			if r != nil {
-				r.Close()
+				_ = r.Close()
 			}
 		}
 		netCancel()
@@ -410,7 +410,7 @@ func (itr *IntegrationTestReplicas) AreConsistent(t testing.TB) bool {
 		t.Errorf("query error: %v", err)
 		return false
 	}
-	defer results.Close()
+	defer func() { _ = results.Close() }()
 
 	expectedEntries := make(map[string][]byte)
 	for result := range results.Next() {
@@ -433,12 +433,12 @@ func (itr *IntegrationTestReplicas) AreConsistent(t testing.TB) bool {
 		for result := range results.Next() {
 			if result.Error != nil {
 				t.Errorf("replica %d result error: %v", i+1, result.Error)
-				results.Close()
+				_ = results.Close()
 				return false
 			}
 			actualEntries[result.Key] = result.Value
 		}
-		results.Close()
+		_ = results.Close()
 
 		// Compare entries
 		if len(expectedEntries) != len(actualEntries) {

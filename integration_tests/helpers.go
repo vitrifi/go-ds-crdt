@@ -14,7 +14,7 @@ func getReplicaData(t testing.TB, replica *crdt.Datastore) map[string][]byte {
 	ctx := context.Background()
 	results, err := replica.Query(ctx, query.Query{})
 	require.NoError(t, err)
-	defer results.Close()
+	defer func() { _ = results.Close() }()
 
 	data := make(map[string][]byte)
 	for result := range results.Next() {

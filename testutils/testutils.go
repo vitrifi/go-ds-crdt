@@ -118,8 +118,8 @@ func NewTestDatastore(t testing.TB, storeType int, id int) ds.Datastore {
 			t.Fatal(err)
 		}
 		t.Cleanup(func() {
-			dstore.Close()
-			os.RemoveAll(folder)
+			_ = dstore.Close()
+			_ = os.RemoveAll(folder)
 		})
 		return dstore
 	default:
@@ -208,6 +208,7 @@ func (mb *MockBroadcaster) Broadcast(ctx context.Context, data []byte) error {
 	for i, ch := range mb.chans {
 		if mb.dropProb.Load() > 0 {
 			// Implement drop probability logic if needed
+			continue
 		}
 		wg.Add(1)
 		go func(i int, ch chan []byte) {
@@ -311,7 +312,7 @@ func NewTestReplicas(t testing.TB, n int, storeType int, opts *crdt.Options) ([]
 
 	cleanup := func() {
 		for _, r := range replicas {
-			r.Close()
+			_ = r.Close()
 		}
 		bcastCancel()
 	}

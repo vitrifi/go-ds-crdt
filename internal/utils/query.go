@@ -16,6 +16,7 @@ func IterateResults(ctx context.Context, results query.Results, fn func(query.Re
 		if err := results.Close(); err != nil {
 			// Log error but don't return it as it's cleanup
 			// In the future, this could use a logger if available
+			_ = err // Acknowledge we're ignoring the error for linting
 		}
 	}()
 
